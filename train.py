@@ -26,15 +26,16 @@ dataset = dataset.map(preprocess)
 from transformers import AutoModelForSequenceClassification, Trainer, TrainingArguments
 
 model = AutoModelForSequenceClassification.from_pretrained(
-    "distilbert-base-uncased",
+    "cardiffnlp/twitter-roberta-base-irony",
     num_labels=2
 )
 
 training_args = TrainingArguments(
     output_dir="./results",
-    per_device_train_batch_size=16,
-    num_train_epochs=2,
-    logging_dir="./logs",
+    per_device_train_batch_size=8,
+    per_device_eval_batch_size=8,
+    num_train_epochs=5,
+    evaluation_strategy="epoch",
     save_strategy="no"
 )
 

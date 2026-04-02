@@ -1,13 +1,14 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from textblob import TextBlob
-
-app = FastAPI()
-
+import torch
+import torch.nn.functional as F
 from fastapi.middleware.cors import CORSMiddleware
 
+# ✅ Initialize app
+app = FastAPI()
+
+# ✅ Enable CORS (VERY IMPORTANT for frontend)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,31 +17,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-tokenizer = AutoTokenizer.from_pretrained("model")
-model = AutoModelForSequenceClassification.from_pretrained("model")
+# ✅ Load model from Hugging Face
+MODEL_NAME = "cardiffnlp/twitter-roberta-base-irony"
 
+tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+
+# ✅ Request format
 class InputText(BaseModel):
     text: str
     context: str = ""
 
-def get_sentiment(text):
-    return TextBlob(text).sentiment.polarity
+# ✅ Root route (optional)
+@app.get("/")
+def root():
+    return {"message": "Sarcasm Detection API is running"}
 
+# ✅ Prediction route
 @app.post("/predict")
 def predict(data: InputText):
-    sentiment = get_sentiment(data.text)
-    
-    combined = f"Context: {data.context} Text: {data.text} Emotion: {sentiment}"
-    
-    inputs = tokenizer(combined, return_tensors="pt", truncation=True, padding=True)
-    
+    text = data.text
+
+    # Tokenize input
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True,
+        padding=True
+    )
+
+    # Get model output
     with torch.no_grad():
         outputs = model(**inputs)
-    
-    probs = torch.softmax(outputs.logits, dim=1)
-    pred = torch.argmax(probs).item()
-    
+
+    # Convert logits → probabilities
+    probs = F.softmax(outputs.logits, dim=1)
+
+    confidence, predicted_class = torch.max(probs, dim=1)
+
+    confidence = confidence.item()
+    predicted_class = predicted_class.item()
+
+    # 🔥 Confidence threshold fix
+    if confidence < 0.6:
+        sarcasm = False
+    else:
+        sarcasm = True if predicted_class == 1 else False
+
     return {
-        "sarcasm": bool(pred),
-        "confidence": float(probs[0][pred])
+        "sarcasm": sarcasm,
+        "confidence": round(confidence, 3)
     }
